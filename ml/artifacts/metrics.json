@@ -1,0 +1,33 @@
+{
+  "model_type": "XGBClassifier",
+  "dataset": {
+    "description": "Synthesized Prototype Speech Dataset & ASVspoof 2019 LA format subset",
+    "total_audio_chunks": 142,
+    "train_samples": 106,
+    "test_samples": 36,
+    "class_distribution": {
+      "bonafide": 41,
+      "spoofed": 101
+    }
+  },
+  "metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "roc_auc": 1.0
+  },
+  "confusion_matrix": {
+    "true_negatives_bonafide": 10,
+    "false_positives_spoofed": 0,
+    "false_negatives_bonafide": 0,
+    "true_positives_spoofed": 26
+  },
+  "training_environment": {
+    "hardware": "CPU-only",
+    "sample_rate_hz": 16000,
+    "feature_dimensions": 111,
+    "feature_types": "MFCCs (13 coeffs, delta, delta2), Spectral Flatness/Contrast/Centroid, Praat F0 Pitch, Jitter, Shimmer"
+  },
+  "timestamp": "2026-09-26 06:59:07 UTC"
+}

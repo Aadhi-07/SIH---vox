@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <!-- Formant icon: precision waveform/tuning fork mark -->
+  <rect width="48" height="48" rx="10" fill="#15161C"/>
+  <rect x="1" y="1" width="46" height="46" rx="9" stroke="#E8A855" stroke-opacity="0.3" stroke-width="1"/>
+  <!-- Waveform bars representing frequency analysis -->
+  <rect x="10" y="28" width="3" height="8" rx="1.5" fill="#E8A855"/>
+  <rect x="15" y="22" width="3" height="14" rx="1.5" fill="#E8A855"/>
+  <rect x="20" y="16" width="3" height="20" rx="1.5" fill="#E8A855"/>
+  <rect x="25" y="12" width="3" height="24" rx="1.5" fill="#E8A855"/>
+  <rect x="30" y="16" width="3" height="20" rx="1.5" fill="#E8A855"/>
+  <rect x="35" y="22" width="3" height="14" rx="1.5" fill="#E8A855"/>
+  <!-- Subtle arc above = formant envelope -->
+  <path d="M12 14 Q24 4 36 14" stroke="#E8A855" stroke-width="1.5" stroke-opacity="0.4" fill="none" stroke-linecap="round"/>
+</svg>
