@@ -9,7 +9,7 @@ import SIHScenarioBar from './components/SIHScenarioBar';
 import I4CDossierModal from './components/I4CDossierModal';
 import LiveMicModal from './components/LiveMicModal';
 
-import { BACKEND_HTTP_URL, BACKEND_WS_URL } from './config';
+import { BACKEND_HTTP_URL, BACKEND_WS_URL, BACKEND_LABEL } from './config';
 
 const API_BASE = BACKEND_HTTP_URL;
 const WS_URL = `${BACKEND_WS_URL}/ws/dashboard`;
@@ -511,7 +511,7 @@ export default function App() {
           </div>
 
           <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-            :8000
+            {BACKEND_LABEL}
           </div>
         </div>
       </header>

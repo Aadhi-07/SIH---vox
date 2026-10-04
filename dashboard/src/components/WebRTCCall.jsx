@@ -3,7 +3,7 @@ import RiskGauge from './RiskGauge';
 import RiskTimelineChart from './RiskTimelineChart';
 import AlertBanner from './AlertBanner';
 import AcousticTelemetry from './AcousticTelemetry';
-import { BACKEND_WS_URL, BACKEND_HOST } from '../config';
+import { BACKEND_WS_URL, BACKEND_HTTP_URL } from '../config';
 
 export default function WebRTCCall({ onBackToDashboard }) {
   const [roomId, setRoomId] = useState(() => {
@@ -133,7 +133,7 @@ export default function WebRTCCall({ onBackToDashboard }) {
       // 2. Fetch ICE Servers configuration from backend
       let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
       try {
-        const cfgRes = await fetch(`${window.location.protocol}//${BACKEND_HOST}:8000/webrtc/config`);
+        const cfgRes = await fetch(`${BACKEND_HTTP_URL}/webrtc/config`);
         if (cfgRes.ok) {
           const cfg = await cfgRes.json();
           if (cfg.iceServers) iceServers = cfg.iceServers;
