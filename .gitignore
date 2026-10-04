@@ -52,3 +52,7 @@ coverage/
 # ---- Misc ----
 *.tmp
 *.bak
+
+.tools/
+*.dll
+*.exe
