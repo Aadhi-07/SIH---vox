@@ -57,11 +57,24 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "https://sih-vox-frq4.vercel.app",
+        "http://localhost:5173",  # keep this if you still test locally with Vite's default dev port
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+def root():
+    return {
+        "status": "healthy",
+        "service": "VoxGuard Real-Time Voice Clone Detection API",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 # In-Memory Call State Store
 # Structure: { call_id: { "call_id": str, "caller": str, "status": str, "start_time": float, ... } }
