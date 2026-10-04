@@ -65,6 +65,50 @@ def load_audio(audio_input, target_sr=DEFAULT_SAMPLE_RATE):
     else:
         raise ValueError(f"Unsupported audio input type: {type(audio_input)}")
 
+def compute_rms(y: np.ndarray) -> float:
+    """Computes Root Mean Square (RMS) energy of audio signal."""
+    if y is None or len(y) == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(y.astype(np.float32) ** 2)))
+
+def is_speech_active(y: np.ndarray, sr: int = DEFAULT_SAMPLE_RATE, min_rms: float = 0.010, min_voiced_fraction: float = 0.08) -> bool:
+    """
+    Voice Activity Detection (VAD) Gate.
+    Determines whether the audio window contains active human speech
+    before running the synthetic voice classifier.
+
+    Filters out:
+    1. Silence and ambient room noise floor (RMS < min_rms).
+    2. Microphone clicks, unvoiced static, and electrical hum.
+    """
+    if y is None or len(y) == 0:
+        return False
+    rms = compute_rms(y)
+    if rms < min_rms:
+        return False
+
+    # Check voiced periodicity with Parselmouth / Praat
+    if HAS_PARSELMOUTH and len(y) >= 512:
+        try:
+            sound = parselmouth.Sound(y, sampling_frequency=sr)
+            pitch = sound.to_pitch(time_step=0.02, pitch_floor=75.0, pitch_ceiling=600.0)
+            f0_values = pitch.selected_array['frequency']
+            voiced = f0_values[f0_values > 0]
+            if len(f0_values) > 0:
+                vf = len(voiced) / len(f0_values)
+                # If conversational level volume, allow lower voiced fraction for consonants/whispers
+                if rms >= 0.025:
+                    return bool(vf >= 0.04)
+                return bool(vf >= min_voiced_fraction)
+        except Exception:
+            pass
+
+    # Mathematical zero-crossing + energy fallback
+    if len(y) >= 160:
+        zcr = np.mean(np.abs(np.diff(np.sign(y)))) * 0.5
+        return bool(rms >= min_rms and 0.01 <= zcr <= 0.45)
+    return bool(rms >= min_rms)
+
 def chunk_audio_stream(audio_array, sr=DEFAULT_SAMPLE_RATE, window_size_sec=DEFAULT_WINDOW_SEC, hop_size_sec=DEFAULT_HOP_SEC):
     """
     Generator yielding overlapping audio chunks for real-time streaming analysis.

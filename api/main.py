@@ -98,9 +98,15 @@ def decode_audio_chunk(raw_bytes: bytes) -> np.ndarray:
     if len(raw_bytes) >= 12 and raw_bytes[:4] == b"RIFF" and raw_bytes[8:12] == b"WAVE":
         try:
             import soundfile as sf
-            data, _ = sf.read(io.BytesIO(raw_bytes), dtype="float32")
+            data, file_sr = sf.read(io.BytesIO(raw_bytes), dtype="float32")
             if data.ndim > 1:
                 data = np.mean(data, axis=1)
+            if file_sr != DEFAULT_SAMPLE_RATE:
+                try:
+                    import librosa
+                    data = librosa.resample(data, orig_sr=file_sr, target_sr=DEFAULT_SAMPLE_RATE)
+                except Exception:
+                    pass
             return data.astype(np.float32)
         except Exception:
             pass
@@ -639,9 +645,10 @@ async def websocket_call_stream(websocket: WebSocket, call_id: str):
                 analysis = analyze_audio_chunk(window_slice, sample_rate=DEFAULT_SAMPLE_RATE)
                 risk_score = analysis["risk_score"]
                 confidence = analysis.get("confidence", 0.0)
-                is_alert = bool(risk_score >= ALERT_THRESHOLD)
+                is_speech = analysis.get("is_speech", True)
+                is_alert = bool(risk_score >= ALERT_THRESHOLD and is_speech)
 
-                # Human-in-the-loop: when risk crosses threshold, do NOT auto-block.
+                # Human-in-the-loop: when risk crosses threshold on ACTIVE SPEECH, do NOT auto-block.
                 # Instead, set the call state to "PENDING_REVIEW"
                 if is_alert:
                     if not calls_db[call_id].get("alert_raised", False):
@@ -673,8 +680,9 @@ async def websocket_call_stream(websocket: WebSocket, call_id: str):
                 calls_db[call_id]["latest_risk_score"] = risk_score
                 calls_db[call_id]["latest_confidence"] = confidence
                 calls_db[call_id]["confidence"] = confidence
-                calls_db[call_id]["max_risk_score"] = max(calls_db[call_id]["max_risk_score"], risk_score)
-                calls_db[call_id]["alert"] = is_alert
+                if is_speech:
+                    calls_db[call_id]["max_risk_score"] = max(calls_db[call_id]["max_risk_score"], risk_score)
+                    calls_db[call_id]["alert"] = is_alert
                 calls_db[call_id]["packets_processed"] += 1
                 
                 history_entry = {
@@ -682,7 +690,8 @@ async def websocket_call_stream(websocket: WebSocket, call_id: str):
                     "relative_sec": round(ts - calls_db[call_id]["start_time"], 1),
                     "risk_score": risk_score,
                     "confidence": confidence,
-                    "alert": is_alert
+                    "alert": is_alert,
+                    "is_speech": is_speech
                 }
                 calls_db[call_id]["history"].append(history_entry)
                 # Cap history at 200 points
@@ -699,6 +708,7 @@ async def websocket_call_stream(websocket: WebSocket, call_id: str):
                     "status": calls_db[call_id]["status"],
                     "threshold": ALERT_THRESHOLD,
                     "is_spoofed": analysis.get("is_spoofed", False),
+                    "is_speech": is_speech,
                     "telemetry": analysis.get("telemetry", {})
                 }
 

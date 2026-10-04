@@ -15,7 +15,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from ml.feature_extraction import extract_features, DEFAULT_SAMPLE_RATE
+from ml.feature_extraction import extract_features, DEFAULT_SAMPLE_RATE, compute_rms, is_speech_active
 from ml.model import VoxGuardClassifier
 
 MODEL_PATH = BASE_DIR / "ml" / "artifacts" / "model.pkl"
@@ -72,6 +72,9 @@ class VoiceCloneDetector:
         if self.classifier is None:
             self._load_or_init_model()
 
+        if not is_speech_active(audio_array, sr=sample_rate):
+            return ScoreResult(risk_score=0.0, confidence=0.0)
+
         # Extract features
         features = extract_features(audio_array, sr=sample_rate)
         
@@ -82,9 +85,33 @@ class VoiceCloneDetector:
     def analyze_audio_chunk(self, audio_array, sample_rate=DEFAULT_SAMPLE_RATE) -> dict:
         """
         Full forensic analysis returning risk score, confidence, alert status, and acoustic telemetry.
+        Includes Voice Activity Detection (VAD) gating to prevent false positives on silence/ambient noise.
         """
         if self.classifier is None:
             self._load_or_init_model()
+
+        rms = compute_rms(audio_array)
+        speech_active = is_speech_active(audio_array, sr=sample_rate)
+
+        if not speech_active:
+            telemetry = {
+                "spectral_flatness": 0.0,
+                "spectral_centroid": 0.0,
+                "pitch_f0_mean": 0.0,
+                "pitch_f0_std": 0.0,
+                "jitter_local": 0.0,
+                "shimmer_local": 0.0,
+                "rms_energy": round(float(rms), 4)
+            }
+            print(f"[VoxGuard Inference] VAD Gate: Non-speech / ambient noise (RMS: {rms:.4f}) -> Risk: 0.0% | Alert: False")
+            return {
+                "risk_score": 0.0,
+                "confidence": 0.0,
+                "alert": False,
+                "is_spoofed": False,
+                "is_speech": False,
+                "telemetry": telemetry
+            }
 
         features = extract_features(audio_array, sr=sample_rate)
         score, confidence = self.classifier.calculate_risk_and_confidence(features.reshape(1, -1))
@@ -104,14 +131,19 @@ class VoiceCloneDetector:
             telemetry["pitch_f0_std"] = round(float(features[101]), 2)
             telemetry["jitter_local"] = round(float(features[105]), 5)
             telemetry["shimmer_local"] = round(float(features[108]), 4)
+            telemetry["rms_energy"] = round(float(rms), 4)
         except IndexError:
             pass
+
+        is_alert = bool(score >= 70.0)
+        print(f"[VoxGuard Inference] Window Analysis | RMS: {rms:.4f} | F0: {telemetry.get('pitch_f0_mean', 0.0)}Hz | Jitter: {telemetry.get('jitter_local', 0.0):.5f} | Flatness: {telemetry.get('spectral_flatness', 0.0):.4f} -> Risk: {score}% | Alert: {is_alert}")
 
         return {
             "risk_score": score,
             "confidence": confidence,
-            "alert": bool(score >= 70.0),
+            "alert": is_alert,
             "is_spoofed": bool(score >= 50.0),
+            "is_speech": True,
             "telemetry": telemetry
         }
 

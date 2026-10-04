@@ -4,10 +4,11 @@ import { BACKEND_WS_URL } from '../config';
 
 const WS_BASE = BACKEND_WS_URL;
 export default function LiveMicModal({ onClose }) {
-  const [_isRecording, setIsRecording] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [liveScore, setLiveScore] = useState(0);
   const [confidence, setConfidence] = useState(0);
   const [isAlert, setIsAlert] = useState(false);
+  const [isSpeech, setIsSpeech] = useState(false);
   const [telemetry, setTelemetry] = useState({});
   const [packetsSent, setPacketsSent] = useState(0);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -72,15 +73,38 @@ export default function LiveMicModal({ onClose }) {
     draw();
   }, [isAlert]);
 
+  function downsampleBuffer(buffer, sampleRate, outSampleRate) {
+    if (outSampleRate >= sampleRate) return buffer;
+    const ratio = sampleRate / outSampleRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+        accum += buffer[i];
+        count++;
+      }
+      result[offsetResult] = count > 0 ? accum / count : 0;
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
   const startMicTest = async () => {
     setErrorMsg(null);
     try {
-      // 1. Get microphone stream
+      // 1. Get raw microphone stream without destructive browser audio processing
+      // Disabling echoCancellation, noiseSuppression, and autoGainControl preserves natural acoustic micro-jitter and vocal tract textures
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
         }
       });
       streamRef.current = stream;
@@ -101,6 +125,7 @@ export default function LiveMicModal({ onClose }) {
             setLiveScore(data.risk_score);
             if (data.confidence !== undefined) setConfidence(data.confidence);
             setIsAlert(Boolean(data.alert));
+            setIsSpeech(data.is_speech !== undefined ? Boolean(data.is_speech) : true);
             if (data.telemetry) setTelemetry(data.telemetry);
           }
         } catch {
@@ -114,7 +139,8 @@ export default function LiveMicModal({ onClose }) {
       };
 
       // 3. Audio Context & PCM Chunking + AnalyserNode for visualization
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContextClass({ sampleRate: 16000 });
       audioContextRef.current = audioCtx;
 
       const source = audioCtx.createMediaStreamSource(stream);
@@ -129,16 +155,19 @@ export default function LiveMicModal({ onClose }) {
       // Start waveform drawing
       drawWaveform();
 
-      // Process chunks for scoring
+      // Process chunks for scoring with explicit 16kHz resampling
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       scriptNodeRef.current = processor;
 
       processor.onaudioprocess = (e) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         const inputData = e.inputBuffer.getChannelData(0);
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
+        const actualRate = e.inputBuffer.sampleRate || audioCtx.sampleRate || 16000;
+        const resampled = downsampleBuffer(inputData, actualRate, 16000);
+
+        const pcm16 = new Int16Array(resampled.length);
+        for (let i = 0; i < resampled.length; i++) {
+          const s = Math.max(-1, Math.min(1, resampled[i]));
           pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
         ws.send(pcm16.buffer);
@@ -178,7 +207,11 @@ export default function LiveMicModal({ onClose }) {
     };
   }, []);
 
-  const scoreColorRaw = isAlert ? '#E5484D' : (liveScore > 40 ? '#E8A855' : '#4FD1AE');
+  const scoreColorRaw = isAlert 
+    ? '#E5484D' 
+    : (!isSpeech && liveScore === 0 
+        ? '#8E8E93' 
+        : (liveScore > 40 ? '#E8A855' : '#4FD1AE'));
 
   return (
     <div
@@ -315,7 +348,7 @@ export default function LiveMicModal({ onClose }) {
 
               <div style={{ marginTop: '12px' }}>
                 <span
-                  className={isAlert ? 'badge-danger' : 'badge-safe'}
+                  className={isAlert ? 'badge-danger' : (!isSpeech && liveScore === 0 ? 'badge-muted' : 'badge-safe')}
                   style={{
                     padding: '3px 12px',
                     borderRadius: '3px',
@@ -323,10 +356,12 @@ export default function LiveMicModal({ onClose }) {
                     fontWeight: '600',
                     fontFamily: 'var(--font-sans)',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
+                    letterSpacing: '0.5px',
+                    background: (!isSpeech && liveScore === 0) ? 'rgba(255, 255, 255, 0.08)' : undefined,
+                    color: (!isSpeech && liveScore === 0) ? 'var(--text-muted)' : undefined
                   }}
                 >
-                  {isAlert ? 'SYNTHETIC DETECTED' : 'GENUINE VOICE'}
+                  {isAlert ? 'SYNTHETIC DETECTED' : (!isSpeech && liveScore === 0 ? 'LISTENING (AWAITING SPEECH)' : 'GENUINE VOICE')}
                 </span>
               </div>
             </div>
@@ -363,7 +398,7 @@ export default function LiveMicModal({ onClose }) {
             </div>
 
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              Packets: {packetsSent} · Window: 2.0s · Hop: 0.5s
+              Status: {isRecording ? (isSpeech ? '🎙️ Speech Detected' : '👂 Listening (Silence/Pause)') : 'Connecting...'} · Packets: {packetsSent} · Window: 2.0s
             </div>
           </div>
         )}
